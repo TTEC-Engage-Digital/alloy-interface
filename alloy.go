@@ -3,7 +3,6 @@ package alloyinterface
 import (
 	"context"
 	"errors"
-	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,27 +12,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 )
-
-type Config struct {
-	TraceEndpoint string
-	ServiceName   string
-	TracerName    string
-}
-
-func LoadConfig() Config {
-	return Config{
-		TraceEndpoint: getEnv("ALLOY_ENDPOINT", "localhost:4318"),
-		ServiceName:   getEnv("ALLOY_SERVICE_NAME", "addi"),
-		TracerName:    getEnv("ALLOY_TRACER_NAME", "addi-tracer"),
-	}
-}
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
 
 type AlloyClient struct {
 	Tracer trace.Tracer
