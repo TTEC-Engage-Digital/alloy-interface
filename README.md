@@ -17,7 +17,7 @@ This package provides:
 
 ## 🔧 Configuration
 
-This package uses the following environment variables:
+1. This package uses the following environment variables:
 
 | Variable Name           | Default Value      | Description                            |
 |------------------------|--------------------|----------------------------------------|
@@ -31,6 +31,153 @@ Example setup:
 export ALLOY_ENDPOINT=localhost:4318
 export ALLOY_SERVICE_NAME=my-service
 export ALLOY_TRACER_NAME=my-service-tracer
+```
+
+---
+
+2. Setup local Grafana alloy
+
+You can setup the local grafana alloy by following the below page
+https://ttecdev.grafana.net/connections/infrastructure/golang?page=alloy
+
+After setting up Grafana Alloy to use the Go integration, you need to add some more configuration in config.alloy file.
+```bash
+otelcol.receiver.otlp "default" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.otlp/
+
+        // configures the default grpc endpoint "0.0.0.0:4317"
+        grpc { }
+        // configures the default http/protobuf endpoint "0.0.0.0:4318"
+        http { }
+
+        output {
+                metrics = [otelcol.processor.resourcedetection.default.input]
+                logs    = [otelcol.processor.resourcedetection.default.input]
+                traces  = [otelcol.processor.resourcedetection.default.input]
+        }
+}
+
+otelcol.processor.resourcedetection "default" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.resourcedetection/
+        detectors = ["env", "system"] // add "gcp", "ec2", "ecs", "elastic_beanstalk", "eks", "lambda", "azure", "aks",>
+        system {
+                hostname_sources = ["os"]
+        }
+
+		 output {
+                metrics = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+                logs    = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+                traces  = [otelcol.processor.transform.drop_unneeded_resource_attributes.input]
+        }
+}
+
+otelcol.processor.transform "drop_unneeded_resource_attributes" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
+        error_mode = "ignore"
+
+        trace_statements {
+                context    = "resource"
+                statements = [
+                        "delete_key(attributes, \"k8s.pod.start_time\")",
+                        "delete_key(attributes, \"os.description\")",
+                        "delete_key(attributes, \"os.type\")",
+                        "delete_key(attributes, \"process.command_args\")",
+                        "delete_key(attributes, \"process.executable.path\")",
+                        "delete_key(attributes, \"process.pid\")",
+                        "delete_key(attributes, \"process.runtime.description\")",
+                        "delete_key(attributes, \"process.runtime.name\")",
+                        "delete_key(attributes, \"process.runtime.version\")",
+                ]
+		}
+
+        metric_statements {
+                context    = "resource"
+                statements = [
+                        "delete_key(attributes, \"k8s.pod.start_time\")",
+                        "delete_key(attributes, \"os.description\")",
+                        "delete_key(attributes, \"os.type\")",
+                        "delete_key(attributes, \"process.command_args\")",
+                        "delete_key(attributes, \"process.executable.path\")",
+                        "delete_key(attributes, \"process.pid\")",
+                        "delete_key(attributes, \"process.runtime.description\")",
+                        "delete_key(attributes, \"process.runtime.name\")",
+                        "delete_key(attributes, \"process.runtime.version\")",
+                ]
+        }
+
+		log_statements {
+                context    = "resource"
+                statements = [
+                        "delete_key(attributes, \"k8s.pod.start_time\")",
+                        "delete_key(attributes, \"os.description\")",
+                        "delete_key(attributes, \"os.type\")",
+                        "delete_key(attributes, \"process.command_args\")",
+                        "delete_key(attributes, \"process.executable.path\")",
+                        "delete_key(attributes, \"process.pid\")",
+                        "delete_key(attributes, \"process.runtime.description\")",
+                        "delete_key(attributes, \"process.runtime.name\")",
+                        "delete_key(attributes, \"process.runtime.version\")",
+                ]
+        }
+
+        output {
+                metrics = [otelcol.processor.transform.add_resource_attributes_as_metric_attributes.input]
+                logs    = [otelcol.processor.batch.default.input]
+                traces  = [
+                        otelcol.processor.batch.default.input,
+                        otelcol.connector.host_info.default.input,
+                ]
+        }
+}
+
+otelcol.connector.host_info "default" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.connector.host_info/
+        host_identifiers = ["host.name"]
+
+        output {
+                metrics = [otelcol.processor.batch.default.input]
+        }
+}
+
+otelcol.processor.transform "add_resource_attributes_as_metric_attributes" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.transform/
+        error_mode = "ignore"
+
+        metric_statements {
+                context    = "datapoint"
+                statements = [
+                        "set(attributes[\"deployment.environment\"], resource.attributes[\"deployment.environment\"])",
+                        "set(attributes[\"service.version\"], resource.attributes[\"service.version\"])",
+                ]
+        }
+
+		output {
+                metrics = [otelcol.processor.batch.default.input]
+        }
+}
+
+otelcol.processor.batch "default" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.batch/
+        output {
+                metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+                logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
+                traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
+        }
+}
+
+otelcol.exporter.otlphttp "grafana_cloud" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlphttp/
+        client {
+                endpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+                auth     = otelcol.auth.basic.grafana_cloud.handler
+        }
+}
+
+otelcol.auth.basic "grafana_cloud" {
+        // https://grafana.com/docs/alloy/latest/reference/components/otelcol.auth.basic/
+        username = 0000000 // replace real username with this
+        password = "replace real password"
+}
 ```
 
 ---
