@@ -17,7 +17,7 @@ This package provides:
 
 ## 🔧 Configuration
 
-1. This package uses the following environment variables:
+### 1. This package uses the following environment variables:
 
 | Variable Name           | Default Value      | Description                            |
 |------------------------|--------------------|----------------------------------------|
@@ -35,7 +35,7 @@ export ALLOY_TRACER_NAME=my-service-tracer
 
 ---
 
-2. Setup local Grafana alloy
+### 2. Setup local Grafana alloy (optional)
 
 You can setup the local grafana alloy by following the below page
 https://ttecdev.grafana.net/connections/infrastructure/golang?page=alloy

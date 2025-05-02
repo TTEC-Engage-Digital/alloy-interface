@@ -45,3 +45,21 @@ func TestShutdown(t *testing.T) {
 	err = client.Shutdown(ctx)
 	assert.NoError(t, err)
 }
+
+func TestAddLog(t *testing.T) {
+	ctx := context.Background()
+	client, err := NewAlloyClient(ctx)
+	assert.NoError(t, err)
+
+	err = client.AddLog(ctx, "log.title", "This is a log message")
+	assert.NoError(t, err)
+}
+
+func TestAddError(t *testing.T) {
+	ctx := context.Background()
+	client, err := NewAlloyClient(ctx)
+	assert.NoError(t, err)
+
+	err = client.AddError(ctx, "error.title", "This is an error message")
+	assert.NoError(t, err)
+}

@@ -3,6 +3,7 @@ package alloyinterface
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -77,6 +78,28 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 	}
 	_, span := ac.Tracer.Start(ctx, name)
 	span.SetAttributes(attrs...)
+	span.End()
+	return nil
+}
+
+func (ac *AlloyClient) AddLog(ctx context.Context, title string, logMsgs string) error {
+	_, span, err := ac.StartTrace(ctx, "log")
+	if err != nil {
+		return fmt.Errorf("failed to start tracing: %v", err)
+	}
+
+	span.SetAttributes(attribute.String(title, logMsgs))
+	span.End()
+	return nil
+}
+
+func (ac *AlloyClient) AddError(ctx context.Context, title string, errMsgs string) error {
+	_, span, err := ac.StartTrace(ctx, "error")
+	if err != nil {
+		return fmt.Errorf("failed to start tracing: %v", err)
+	}
+
+	span.SetAttributes(attribute.String(title, errMsgs))
 	span.End()
 	return nil
 }
