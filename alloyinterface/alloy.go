@@ -22,6 +22,7 @@ import (
 type AlloyClient struct {
 	Tracer         trace.Tracer
 	Logger         *slog.Logger
+	logFile        *os.File
 	Meter          metric.Meter
 	cfg            Config
 	traceShutdown  func(context.Context) error
@@ -31,7 +32,10 @@ type AlloyClient struct {
 func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	cfg := LoadConfig()
 
-	logger := newLogger()
+	logger, logFile, err := newLogger()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %v", err)
+	}
 
 	tracer, closeFn, err := initTracer(ctx, cfg)
 	if err != nil {
@@ -40,6 +44,7 @@ func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	return &AlloyClient{
 		Tracer:        tracer,
 		Logger:        logger,
+		logFile:       logFile,
 		cfg:           cfg,
 		traceShutdown: closeFn,
 	}, nil
@@ -102,8 +107,21 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level slog.Level, msg string,
 }
 
 func (ac *AlloyClient) Shutdown(ctx context.Context) error {
+	var shutdownErrs []error
 	if ac.traceShutdown != nil {
-		return ac.traceShutdown(ctx)
+		if err := ac.traceShutdown(ctx); err != nil {
+			shutdownErrs = append(shutdownErrs, fmt.Errorf("failed to shutdown tracer: %v", err))
+		}
+	}
+
+	if ac.logFile != nil {
+		if err := ac.logFile.Close(); err != nil {
+			shutdownErrs = append(shutdownErrs, fmt.Errorf("failed to close log file: %v", err))
+		}
+	}
+
+	if len(shutdownErrs) > 0 {
+		return fmt.Errorf("shutdown errors: %v", shutdownErrs)
 	}
 	return nil
 }
@@ -152,12 +170,11 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 // 		sdkmetric.WithReader(metricExp),
 // }
 
-func newLogger() *slog.Logger {
+func newLogger() (*slog.Logger, *os.File, error) {
 	today := time.Now().Format("2006-01-02")
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Println("Error getting home directory:", err)
-		return nil
+		return nil, nil, err
 	}
 	logDir := filepath.Join(homeDir, "logs", "alloy-interface")
 	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", today))
@@ -165,18 +182,17 @@ func newLogger() *slog.Logger {
 	err = os.MkdirAll(logDir, os.ModePerm)
 	if err != nil {
 		fmt.Println("Error creating log directory:", err)
-		return nil
+		return nil, nil, err
 	}
 
 	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println("Error opening log file:", err)
-		return nil
+		return nil, nil, err
 	}
-	defer file.Close()
 
 	handler := slog.NewJSONHandler(file, nil)
-	return slog.New(handler)
+	return slog.New(handler), file, nil
 }
 
 func slogLevelToString(level slog.Level) string {
