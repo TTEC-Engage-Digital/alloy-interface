@@ -153,8 +153,16 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 
 func newLogger() *slog.Logger {
 	today := time.Now().Format("2006-01-02")
-	logDir := fmt.Sprintf("/var/log/alloy-interface/%s", today)
-	file, err := os.OpenFile(logDir, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logDir := "var/log/alloy-interface"
+	logFilePath := fmt.Sprintf("%s/%s", logDir, today)
+
+	err := os.MkdirAll(logDir, os.ModePerm)
+	if err != nil {
+		fmt.Println("Error creating log directory:", err)
+		return nil
+	}
+
+	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println("Error opening log file:", err)
 		return nil
