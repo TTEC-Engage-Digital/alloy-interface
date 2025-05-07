@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -153,10 +154,15 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 
 func newLogger() *slog.Logger {
 	today := time.Now().Format("2006-01-02")
-	logDir := "var/log/alloy-interface"
-	logFilePath := fmt.Sprintf("%s/%s", logDir, today)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("Error getting home directory:", err)
+		return nil
+	}
+	logDir := filepath.Join(homeDir, "logs", "alloy-interface")
+	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", today))
 
-	err := os.MkdirAll(logDir, os.ModePerm)
+	err = os.MkdirAll(logDir, os.ModePerm)
 	if err != nil {
 		fmt.Println("Error creating log directory:", err)
 		return nil
