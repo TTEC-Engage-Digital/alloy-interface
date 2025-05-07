@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
@@ -17,10 +18,12 @@ import (
 )
 
 type AlloyClient struct {
-	Tracer trace.Tracer
-	Logger *slog.Logger
-	cfg    Config
-	close  func(context.Context) error
+	Tracer         trace.Tracer
+	Logger         *slog.Logger
+	Meter          metric.Meter
+	cfg            Config
+	traceShutdown  func(context.Context) error
+	metricShutdown func(context.Context) error
 }
 
 func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
@@ -33,10 +36,10 @@ func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 		return nil, err
 	}
 	return &AlloyClient{
-		Tracer: tracer,
-		Logger: logger,
-		cfg:    cfg,
-		close:  closeFn,
+		Tracer:        tracer,
+		Logger:        logger,
+		cfg:           cfg,
+		traceShutdown: closeFn,
 	}, nil
 }
 
@@ -97,8 +100,8 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level slog.Level, msg string,
 }
 
 func (ac *AlloyClient) Shutdown(ctx context.Context) error {
-	if ac.close != nil {
-		return ac.close(ctx)
+	if ac.traceShutdown != nil {
+		return ac.traceShutdown(ctx)
 	}
 	return nil
 }
@@ -134,6 +137,19 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 	return otel.Tracer(cfg.TracerName), tp.Shutdown, nil
 }
 
+// func initMetrics(ctx context.Context, cfg Config) (metric.Meter, func(context.Context) error, error) {
+// 	metricExp, err := otlptracehttp.New(ctx,
+// 		otlptracehttp.WithEndpoint(cfg.MetricsEndpoint),
+// 		otlptracehttp.WithInsecure(),
+// 	)
+// 	if err != nil {
+// 		return nil, nil, err
+// 	}
+
+// 	mp := sdkmetric.NewMeterProvider(
+// 		sdkmetric.WithReader(metricExp),
+// }
+
 func newLogger() *slog.Logger {
 	handler := slog.NewJSONHandler(os.Stdout, nil)
 	return slog.New(handler)
@@ -144,7 +160,6 @@ func slogLevelToString(level slog.Level) string {
 	case slog.LevelDebug:
 		return "DEBUG"
 	case slog.LevelInfo:
-		s
 		return "INFO"
 	case slog.LevelWarn:
 		return "WARN"
