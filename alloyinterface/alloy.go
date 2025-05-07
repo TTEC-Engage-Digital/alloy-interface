@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
@@ -15,22 +18,92 @@ import (
 )
 
 type AlloyClient struct {
-	Tracer trace.Tracer
-	cfg    Config
-	close  func(context.Context) error
+	Tracer         trace.Tracer
+	Logger         *slog.Logger
+	Meter          metric.Meter
+	cfg            Config
+	traceShutdown  func(context.Context) error
+	metricShutdown func(context.Context) error
 }
 
 func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	cfg := LoadConfig()
+
+	logger := newLogger()
+
 	tracer, closeFn, err := initTracer(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &AlloyClient{
-		Tracer: tracer,
-		cfg:    cfg,
-		close:  closeFn,
+		Tracer:        tracer,
+		Logger:        logger,
+		cfg:           cfg,
+		traceShutdown: closeFn,
 	}, nil
+}
+
+func (ac *AlloyClient) StartTrace(ctx context.Context, name string) (context.Context, trace.Span, error) {
+	if ac.Tracer == nil {
+		return nil, nil, errors.New("tracer not initialized")
+	}
+	ctx, span := ac.Tracer.Start(ctx, name)
+	return ctx, span, nil
+}
+
+func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) error {
+	if ac.Tracer == nil {
+		return errors.New("tracer not initialized")
+	}
+	_, span := ac.Tracer.Start(ctx, name)
+	span.SetAttributes(attrs...)
+	span.End()
+	return nil
+}
+
+// func (ac *AlloyClient) AddLog(ctx context.Context, title string, logMsgs string) error {
+// 	_, span, err := ac.StartTrace(ctx, "log")
+// 	if err != nil {
+// 		return fmt.Errorf("failed to start tracing: %v", err)
+// 	}
+
+// 	span.SetAttributes(attribute.String(title, logMsgs))
+// 	span.End()
+// 	return nil
+// }
+
+func (ac *AlloyClient) AddLog(ctx context.Context, level slog.Level, msg string, attrs ...any) error {
+	_, span, err := ac.StartTrace(ctx, "log")
+	if err != nil {
+		return fmt.Errorf("failed to start tracing: %v", err)
+	}
+
+	span.SetAttributes(attribute.String(slogLevelToString(level), msg))
+	span.End()
+
+	spanCtx := span.SpanContext()
+	if spanCtx.HasSpanID() && spanCtx.HasTraceID() {
+		attrs = append(attrs, "trace_id", spanCtx.TraceID().String(), "span_id", spanCtx.SpanID().String())
+	}
+
+	if level == slog.LevelDebug {
+		ac.Logger.Debug(msg, attrs...)
+	} else if level == slog.LevelInfo {
+		ac.Logger.Info(msg, attrs...)
+	} else if level == slog.LevelWarn {
+		ac.Logger.Warn(msg, attrs...)
+	} else if level == slog.LevelError {
+		ac.Logger.Error(msg, attrs...)
+	}
+
+	return nil
+}
+
+func (ac *AlloyClient) Shutdown(ctx context.Context) error {
+	if ac.traceShutdown != nil {
+		return ac.traceShutdown(ctx)
+	}
+	return nil
 }
 
 func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
@@ -64,49 +137,35 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 	return otel.Tracer(cfg.TracerName), tp.Shutdown, nil
 }
 
-func (ac *AlloyClient) StartTrace(ctx context.Context, name string) (context.Context, trace.Span, error) {
-	if ac.Tracer == nil {
-		return nil, nil, errors.New("tracer not initialized")
-	}
-	ctx, span := ac.Tracer.Start(ctx, name)
-	return ctx, span, nil
+// func initMetrics(ctx context.Context, cfg Config) (metric.Meter, func(context.Context) error, error) {
+// 	metricExp, err := otlptracehttp.New(ctx,
+// 		otlptracehttp.WithEndpoint(cfg.MetricsEndpoint),
+// 		otlptracehttp.WithInsecure(),
+// 	)
+// 	if err != nil {
+// 		return nil, nil, err
+// 	}
+
+// 	mp := sdkmetric.NewMeterProvider(
+// 		sdkmetric.WithReader(metricExp),
+// }
+
+func newLogger() *slog.Logger {
+	handler := slog.NewJSONHandler(os.Stdout, nil)
+	return slog.New(handler)
 }
 
-func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) error {
-	if ac.Tracer == nil {
-		return errors.New("tracer not initialized")
+func slogLevelToString(level slog.Level) string {
+	switch level {
+	case slog.LevelDebug:
+		return "DEBUG"
+	case slog.LevelInfo:
+		return "INFO"
+	case slog.LevelWarn:
+		return "WARN"
+	case slog.LevelError:
+		return "ERROR"
+	default:
+		return "UNKNOWN"
 	}
-	_, span := ac.Tracer.Start(ctx, name)
-	span.SetAttributes(attrs...)
-	span.End()
-	return nil
-}
-
-func (ac *AlloyClient) AddLog(ctx context.Context, title string, logMsgs string) error {
-	_, span, err := ac.StartTrace(ctx, "log")
-	if err != nil {
-		return fmt.Errorf("failed to start tracing: %v", err)
-	}
-
-	span.SetAttributes(attribute.String(title, logMsgs))
-	span.End()
-	return nil
-}
-
-func (ac *AlloyClient) AddError(ctx context.Context, title string, errMsgs string) error {
-	_, span, err := ac.StartTrace(ctx, "error")
-	if err != nil {
-		return fmt.Errorf("failed to start tracing: %v", err)
-	}
-
-	span.SetAttributes(attribute.String(title, errMsgs))
-	span.End()
-	return nil
-}
-
-func (ac *AlloyClient) Shutdown(ctx context.Context) error {
-	if ac.close != nil {
-		return ac.close(ctx)
-	}
-	return nil
 }
