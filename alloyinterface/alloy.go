@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -151,7 +152,16 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 // }
 
 func newLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, nil)
+	today := time.Now().Format("2006-01-02")
+	logDir := fmt.Sprintf("/var/log/alloy-interface/%s", today)
+	file, err := os.OpenFile(logDir, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Println("Error opening log file:", err)
+		return nil
+	}
+	defer file.Close()
+
+	handler := slog.NewJSONHandler(file, nil)
 	return slog.New(handler)
 }
 
