@@ -1,10 +1,13 @@
 package alloyinterface
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -21,8 +24,6 @@ import (
 
 type AlloyClient struct {
 	Tracer         trace.Tracer
-	Logger         *slog.Logger
-	logFile        *os.File
 	Meter          metric.Meter
 	cfg            Config
 	traceShutdown  func(context.Context) error
@@ -32,19 +33,12 @@ type AlloyClient struct {
 func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	cfg := LoadConfig()
 
-	logger, logFile, err := newLogger()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create logger: %v", err)
-	}
-
 	tracer, closeFn, err := initTracer(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &AlloyClient{
 		Tracer:        tracer,
-		Logger:        logger,
-		logFile:       logFile,
 		cfg:           cfg,
 		traceShutdown: closeFn,
 	}, nil
@@ -79,28 +73,42 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 // 	return nil
 // }
 
-func (ac *AlloyClient) AddLog(ctx context.Context, level slog.Level, msg string, attrs ...any) error {
-	_, span, err := ac.StartTrace(ctx, "log")
+func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, attrs ...any) error {
+	attrMap := make(map[string]interface{})
+	for i := 0; i < len(attrs); i += 2 {
+		key, found := attrs[i].(string)
+		if !found {
+			continue
+		}
+		attrMap[key] = attrs[i+1]
+	}
+
+	logRecord := map[string]interface{}{
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"severity_text": level,
+		"body":          msg,
+		"attributes":    attrMap,
+	}
+
+	jsonBytes, err := json.Marshal(logRecord)
 	if err != nil {
-		return fmt.Errorf("failed to start tracing: %v", err)
+		return fmt.Errorf("failed to marshal log record: %v", err)
 	}
 
-	span.SetAttributes(attribute.String(slogLevelToString(level), msg))
-	span.End()
-
-	spanCtx := span.SpanContext()
-	if spanCtx.HasSpanID() && spanCtx.HasTraceID() {
-		attrs = append(attrs, "trace_id", spanCtx.TraceID().String(), "span_id", spanCtx.SpanID().String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.TraceEndpoint, bytes.NewBuffer(jsonBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	if level == slog.LevelDebug {
-		ac.Logger.Debug(msg, attrs...)
-	} else if level == slog.LevelInfo {
-		ac.Logger.Info(msg, attrs...)
-	} else if level == slog.LevelWarn {
-		ac.Logger.Warn(msg, attrs...)
-	} else if level == slog.LevelError {
-		ac.Logger.Error(msg, attrs...)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("failed to send log record, status code: %d", resp.StatusCode)
 	}
 
 	return nil
@@ -111,12 +119,6 @@ func (ac *AlloyClient) Shutdown(ctx context.Context) error {
 	if ac.traceShutdown != nil {
 		if err := ac.traceShutdown(ctx); err != nil {
 			shutdownErrs = append(shutdownErrs, fmt.Errorf("failed to shutdown tracer: %v", err))
-		}
-	}
-
-	if ac.logFile != nil {
-		if err := ac.logFile.Close(); err != nil {
-			shutdownErrs = append(shutdownErrs, fmt.Errorf("failed to close log file: %v", err))
 		}
 	}
 

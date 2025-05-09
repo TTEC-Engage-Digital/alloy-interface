@@ -2,7 +2,6 @@ package alloyinterface
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -52,6 +51,6 @@ func TestAddLog(t *testing.T) {
 	client, err := NewAlloyClient(ctx)
 	assert.NoError(t, err)
 
-	err = client.AddLog(ctx, slog.LevelDebug, "This is a log message")
+	err = client.AddLog(ctx, "Debug", "This is a log message")
 	assert.NoError(t, err)
 }
