@@ -73,7 +73,7 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 // 	return nil
 // }
 
-func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, attrs ...any) error {
+func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, attrs ...any) (*http.Response, error) {
 	attrMap := make(map[string]interface{})
 	for i := 0; i < len(attrs); i += 2 {
 		key, found := attrs[i].(string)
@@ -92,26 +92,26 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, att
 
 	jsonBytes, err := json.Marshal(logRecord)
 	if err != nil {
-		return fmt.Errorf("failed to marshal log record: %v", err)
+		return nil, fmt.Errorf("failed to marshal log record: %v", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.TraceEndpoint, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
+		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
+		return resp, fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("failed to send log record, status code: %d", resp.StatusCode)
+		return resp, fmt.Errorf("failed to send log record, status code: %d", resp.StatusCode)
 	}
 
-	return nil
+	return resp, nil
 }
 
 func (ac *AlloyClient) Shutdown(ctx context.Context) error {
