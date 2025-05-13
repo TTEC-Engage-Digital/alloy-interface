@@ -51,6 +51,6 @@ func TestAddLog(t *testing.T) {
 	client, err := NewAlloyClient(ctx)
 	assert.NoError(t, err)
 
-	err = client.AddLog(ctx, "Debug", "This is a log message")
+	_, err = client.AddLog(ctx, "Debug", "This is a log message")
 	assert.NoError(t, err)
 }

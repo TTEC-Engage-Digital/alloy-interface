@@ -95,7 +95,7 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, att
 		return nil, fmt.Errorf("failed to marshal log record: %v", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.TraceEndpoint, bytes.NewBuffer(jsonBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.Endpoint+"/v1/logs", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -133,7 +133,7 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 	var err error
 
 	httpOpts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(cfg.TraceEndpoint),
+		otlptracehttp.WithEndpoint(cfg.Endpoint),
 		otlptracehttp.WithInsecure(),
 	}
 	exporter, err = otlptracehttp.New(ctx, httpOpts...)
