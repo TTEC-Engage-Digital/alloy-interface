@@ -17,7 +17,7 @@ func TestLoadConfig(t *testing.T) {
 	cfg := LoadConfig()
 
 	// Assert the values are correctly loaded from environment variables
-	assert.Equal(t, "test-endpoint", cfg.Endpoint)
+	assert.Equal(t, "test-endpoint", cfg.TraceEndpoint)
 	assert.Equal(t, "test-service", cfg.ServiceName)
 	assert.Equal(t, "test-tracer", cfg.TracerName)
 
@@ -37,7 +37,7 @@ func TestLoadConfigWithFallback(t *testing.T) {
 	cfg := LoadConfig()
 
 	// Assert the fallback values are used
-	assert.Equal(t, "localhost:4318", cfg.Endpoint)
+	assert.Equal(t, "localhost:4318", cfg.TraceEndpoint)
 	assert.Equal(t, "addi", cfg.ServiceName)
 	assert.Equal(t, "addi-tracer", cfg.TracerName)
 }

@@ -73,21 +73,14 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 // 	return nil
 // }
 
-func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, attrs ...any) (*http.Response, error) {
-	attrMap := make(map[string]interface{})
-	for i := 0; i < len(attrs); i += 2 {
-		key, found := attrs[i].(string)
-		if !found {
-			continue
-		}
-		attrMap[key] = attrs[i+1]
-	}
-
+func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*http.Response, error) {
 	logRecord := map[string]interface{}{
-		"timestamp":     time.Now().Format(time.RFC3339),
-		"severity_text": level,
-		"body":          msg,
-		"attributes":    attrMap,
+		"timestamp": time.Now().Format(time.RFC3339),
+		"log": map[string]string{
+			"level":     level,
+			"message":   msg,
+			"is_secret": "false",
+		},
 	}
 
 	jsonBytes, err := json.Marshal(logRecord)
@@ -95,7 +88,7 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string, att
 		return nil, fmt.Errorf("failed to marshal log record: %v", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.Endpoint+"/v1/logs", bytes.NewBuffer(jsonBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ac.cfg.LogEndpoint+"/loki/api/v1/raw", bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
@@ -133,7 +126,7 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 	var err error
 
 	httpOpts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(cfg.Endpoint),
+		otlptracehttp.WithEndpoint(cfg.TraceEndpoint),
 		otlptracehttp.WithInsecure(),
 	}
 	exporter, err = otlptracehttp.New(ctx, httpOpts...)

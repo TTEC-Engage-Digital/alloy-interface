@@ -5,16 +5,18 @@ import (
 )
 
 type Config struct {
-	Endpoint    string
-	ServiceName string
-	TracerName  string
+	TraceEndpoint string
+	LogEndpoint   string
+	ServiceName   string
+	TracerName    string
 }
 
 func LoadConfig() Config {
 	return Config{
-		Endpoint:    getEnv("ALLOY_ENDPOINT", "http://localhost:4318"),
-		ServiceName: getEnv("ALLOY_SERVICE_NAME", "addi"),
-		TracerName:  getEnv("ALLOY_TRACER_NAME", "addi-tracer"),
+		TraceEndpoint: getEnv("ALLOY_ENDPOINT", "localhost:4318"),
+		LogEndpoint:   getEnv("ALLOY_LOG_ENDPOINT", "http://localhost:9999"),
+		ServiceName:   getEnv("ALLOY_SERVICE_NAME", "addi"),
+		TracerName:    getEnv("ALLOY_TRACER_NAME", "addi-tracer"),
 	}
 }
 
