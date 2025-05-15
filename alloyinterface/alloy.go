@@ -6,10 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -77,9 +74,10 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*h
 	logRecord := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"log": map[string]string{
-			"level":     level,
-			"message":   msg,
-			"is_secret": "false",
+			"level":        level,
+			"message":      msg,
+			"is_secret":    "false",
+			"service_name": ac.cfg.ServiceName,
 		},
 	}
 
@@ -164,43 +162,3 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 // 	mp := sdkmetric.NewMeterProvider(
 // 		sdkmetric.WithReader(metricExp),
 // }
-
-func newLogger() (*slog.Logger, *os.File, error) {
-	today := time.Now().Format("2006-01-02")
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, nil, err
-	}
-	logDir := filepath.Join(homeDir, "logs", "alloy-interface")
-	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", today))
-
-	err = os.MkdirAll(logDir, os.ModePerm)
-	if err != nil {
-		fmt.Println("Error creating log directory:", err)
-		return nil, nil, err
-	}
-
-	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		fmt.Println("Error opening log file:", err)
-		return nil, nil, err
-	}
-
-	handler := slog.NewJSONHandler(file, nil)
-	return slog.New(handler), file, nil
-}
-
-func slogLevelToString(level slog.Level) string {
-	switch level {
-	case slog.LevelDebug:
-		return "DEBUG"
-	case slog.LevelInfo:
-		return "INFO"
-	case slog.LevelWarn:
-		return "WARN"
-	case slog.LevelError:
-		return "ERROR"
-	default:
-		return "UNKNOWN"
-	}
-}
