@@ -71,6 +71,14 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 // }
 
 func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*http.Response, error) {
+	span := trace.SpanFromContext(ctx)
+	traceID := ""
+	spanID := ""
+	if span != nil {
+		traceID = span.SpanContext().TraceID().String()
+		spanID = span.SpanContext().SpanID().String()
+	}
+
 	logRecord := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"log": map[string]string{
@@ -78,6 +86,8 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*h
 			"message":      msg,
 			"is_secret":    "false",
 			"service_name": ac.cfg.ServiceName,
+			"trace_id":     traceID,
+			"span_id":      spanID,
 		},
 	}
 
