@@ -41,11 +41,11 @@ func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	}, nil
 }
 
-func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, name string, attrs ...attribute.KeyValue) error {
+func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, attrs ...attribute.KeyValue) error {
 	if ac.Tracer == nil {
 		return errors.New("tracer not initialized")
 	}
-	_, span := ac.Tracer.Start(ctx, name)
+	_, span := ac.Tracer.Start(ctx, tracerName)
 	span.SetAttributes(attrs...)
 	span.End()
 	return nil
