@@ -41,15 +41,7 @@ func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
 	}, nil
 }
 
-func (ac *AlloyClient) StartTrace(ctx context.Context, name string) (context.Context, trace.Span, error) {
-	if ac.Tracer == nil {
-		return nil, nil, errors.New("tracer not initialized")
-	}
-	ctx, span := ac.Tracer.Start(ctx, name)
-	return ctx, span, nil
-}
-
-func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) error {
+func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, name string, attrs ...attribute.KeyValue) error {
 	if ac.Tracer == nil {
 		return errors.New("tracer not initialized")
 	}
@@ -59,8 +51,8 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 	return nil
 }
 
-func (ac *AlloyClient) AddTrace(ctx context.Context, title string, msgBody string) error {
-	_, span, err := ac.StartTrace(ctx, "log")
+func (ac *AlloyClient) AddSpan(ctx context.Context, tracerName string, title string, msgBody string) error {
+	_, span, err := ac.startTrace(ctx, tracerName)
 	if err != nil {
 		return fmt.Errorf("failed to start tracing: %v", err)
 	}
@@ -148,6 +140,14 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 	otel.SetTracerProvider(tp)
 
 	return otel.Tracer(cfg.TracerName), tp.Shutdown, nil
+}
+
+func (ac *AlloyClient) startTrace(ctx context.Context, name string) (context.Context, trace.Span, error) {
+	if ac.Tracer == nil {
+		return nil, nil, errors.New("tracer not initialized")
+	}
+	ctx, span := ac.Tracer.Start(ctx, name)
+	return ctx, span, nil
 }
 
 // func initMetrics(ctx context.Context, cfg Config) (metric.Meter, func(context.Context) error, error) {
