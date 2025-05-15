@@ -59,26 +59,18 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, name string, attrs ...attrib
 	return nil
 }
 
-// func (ac *AlloyClient) AddLog(ctx context.Context, title string, logMsgs string) error {
-// 	_, span, err := ac.StartTrace(ctx, "log")
-// 	if err != nil {
-// 		return fmt.Errorf("failed to start tracing: %v", err)
-// 	}
-
-// 	span.SetAttributes(attribute.String(title, logMsgs))
-// 	span.End()
-// 	return nil
-// }
-
-func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*http.Response, error) {
-	span := trace.SpanFromContext(ctx)
-	traceID := ""
-	spanID := ""
-	if span != nil {
-		traceID = span.SpanContext().TraceID().String()
-		spanID = span.SpanContext().SpanID().String()
+func (ac *AlloyClient) AddTrace(ctx context.Context, title string, msgBody string) error {
+	_, span, err := ac.StartTrace(ctx, "log")
+	if err != nil {
+		return fmt.Errorf("failed to start tracing: %v", err)
 	}
 
+	span.SetAttributes(attribute.String(title, msgBody))
+	span.End()
+	return nil
+}
+
+func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*http.Response, error) {
 	logRecord := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"log": map[string]string{
@@ -86,8 +78,6 @@ func (ac *AlloyClient) AddLog(ctx context.Context, level string, msg string) (*h
 			"message":      msg,
 			"is_secret":    "false",
 			"service_name": ac.cfg.ServiceName,
-			"trace_id":     traceID,
-			"span_id":      spanID,
 		},
 	}
 
