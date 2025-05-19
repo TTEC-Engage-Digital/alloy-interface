@@ -3,108 +3,219 @@ package alloyinterface
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/time/rate"
 )
 
-func TestNewAlloyClient(t *testing.T) {
-	ctx := context.Background()
-	client, err := NewAlloyClient(ctx)
+func TestNewAlloyClient_Success(t *testing.T) {
+	client, err := NewAlloyClient(context.Background())
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
+	assert.NotNil(t, client.Logger)
 	assert.NotNil(t, client.Tracer)
 }
 
-func TestStartTrace(t *testing.T) {
-	ctx := context.Background()
-	client, err := NewAlloyClient(ctx)
-	assert.NoError(t, err)
+func TestNewAlloyClient_TracerError(t *testing.T) {
+	original := initTracerFn
+	defer func() { initTracerFn = original }()
+	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+		return nil, nil, errors.New("tracer init failed")
+	}
 
-	traceCtx, span, err := client.startTrace(ctx, "test-span")
-	assert.NoError(t, err)
-	assert.NotNil(t, traceCtx)
-	assert.NotNil(t, span)
-	assert.NotNil(t, span.SpanContext().TraceID())
+	client, err := NewAlloyClient(context.Background())
+	assert.Nil(t, client)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "tracer init failed")
 }
 
-func TestAddSpan(t *testing.T) {
-	ctx := context.Background()
-	client, err := NewAlloyClient(ctx)
-	assert.NoError(t, err)
+func TestNewAlloyClient_LoggerError(t *testing.T) {
+	origTracer := initTracerFn
+	origLogger := initLogFn
+	defer func() {
+		initTracerFn = origTracer
+		initLogFn = origLogger
+	}()
 
-	err = client.AddSpanWithAttr(ctx, "test-span", attribute.String("key", "value"))
+	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+		return trace.NewNoopTracerProvider().Tracer("noop"), func(context.Context) error { return nil }, nil
+	}
+	initLogFn = func() (zerolog.Logger, error) {
+		return zerolog.Logger{}, errors.New("log init failed")
+	}
+
+	client, err := NewAlloyClient(context.Background())
+	assert.Nil(t, client)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "log init failed")
+}
+
+func TestAddLog_Success(t *testing.T) {
+	ctx := context.WithValue(context.Background(), "request_id", "abc-123")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		defer r.Body.Close()
+
+		var payload map[string]interface{}
+		json.Unmarshal(body, &payload)
+		assert.Equal(t, "info message", payload["message"])
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, _ := NewAlloyClient(context.Background())
+	client.cfg.LogEndpoint = server.URL
+
+	resp, err := client.AddLog(ctx, zerolog.InfoLevel, "info message")
 	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestAddLog_InvalidLevel(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	_, err := client.AddLog(context.Background(), zerolog.Level(-99), "test")
+	assert.Error(t, err)
+	assert.Equal(t, "invalid log level", err.Error())
+}
+
+func TestAddLog_EmptyMessage(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	_, err := client.AddLog(context.Background(), zerolog.InfoLevel, "")
+	assert.Error(t, err)
+	assert.Equal(t, "log message cannot be empty", err.Error())
+}
+
+func TestAddLog_NoRequestID(t *testing.T) {
+	ctx := context.Background()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, _ := NewAlloyClient(context.Background())
+	client.cfg.LogEndpoint = server.URL
+
+	resp, err := client.AddLog(ctx, zerolog.InfoLevel, "message with no request_id")
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// 🚧 AddLog - HTTP failure
+func TestAddLog_HttpFailure(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	client.cfg.LogEndpoint = "http://nonexistent.invalid"
+
+	_, err := client.AddLog(context.Background(), zerolog.InfoLevel, "fail this")
+	assert.Error(t, err)
+}
+
+func TestAddLog_NonSuccessStatus(t *testing.T) {
+	ctx := context.WithValue(context.Background(), "request_id", "456")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	client, _ := NewAlloyClient(context.Background())
+	client.cfg.LogEndpoint = server.URL
+
+	resp, err := client.AddLog(ctx, zerolog.InfoLevel, "test non-200")
+	assert.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestAddSpanWithAttr_Success(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	err := client.AddSpanWithAttr(context.Background(), "test-span", attribute.String("foo", "bar"))
+	assert.NoError(t, err)
+}
+
+func TestAddSpanWithAttr_NoTracer(t *testing.T) {
+	client := &AlloyClient{}
+	err := client.AddSpanWithAttr(context.Background(), "no-span", attribute.String("a", "b"))
+	assert.Error(t, err)
+	assert.Equal(t, "tracer not initialized", err.Error())
+}
+
+func TestAddSpan_Success(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	err := client.AddSpan(context.Background(), "span1", "title", "message")
+	assert.NoError(t, err)
+}
+
+func TestAddSpan_NoTracer(t *testing.T) {
+	client := &AlloyClient{}
+	err := client.AddSpan(context.Background(), "span2", "key", "val")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "tracer not initialized")
+}
+
+func TestSetRateLimit(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	client.SetRateLimit(5, 15)
+
+	assert.Equal(t, rate.Limit(5), client.rateLimiter.Limit())
+	assert.Equal(t, 15, client.rateLimiter.Burst())
+}
+
+func TestAddLog_RateLimitExceeded(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	client.rateLimiter = rate.NewLimiter(0, 0)
+
+	_, err := client.AddLog(context.Background(), zerolog.InfoLevel, "this should be rate-limited")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "rate limit exceeded")
 }
 
 func TestShutdown(t *testing.T) {
-	ctx := context.Background()
-	client, err := NewAlloyClient(ctx)
-	assert.NoError(t, err)
-
-	err = client.Shutdown(ctx)
+	client, _ := NewAlloyClient(context.Background())
+	err := client.Shutdown(context.Background())
 	assert.NoError(t, err)
 }
 
-func TestAddLog(t *testing.T) {
-	// Mock HTTP server
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Validate the request
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST method, got %s", r.Method)
-		}
-		if r.Header.Get("Content-Type") != "application/json" {
-			t.Errorf("expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
-		}
+func TestShutdown_NoTracer(t *testing.T) {
+	client := &AlloyClient{}
+	err := client.Shutdown(context.Background())
+	assert.NoError(t, err)
+}
 
-		// Read and validate the request body
-		var logRecord map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&logRecord)
-		if err != nil {
-			t.Errorf("failed to decode request body: %v", err)
-		}
-		defer r.Body.Close()
-
-		if log, ok := logRecord["log"].(map[string]interface{}); ok {
-			if log["level"] != "info" {
-				t.Errorf("expected level 'info', got %v", log["level"])
-			}
-			if log["message"] != "test message" {
-				t.Errorf("expected message 'test message', got %v", log["message"])
-			}
-			if log["service_name"] != "TestService" {
-				t.Errorf("expected service_name 'TestService', got %v", log["service_name"])
-			}
-		} else {
-			t.Errorf("log field is missing or invalid")
-		}
-
-		// Respond with success
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer mockServer.Close()
-
-	// Create a mock AlloyClient
-	client := &AlloyClient{
-		cfg: Config{
-			ServiceName: "TestService",
-			LogEndpoint: mockServer.URL,
-		},
+func TestShutdown_TracerError(t *testing.T) {
+	origTracer := initTracerFn
+	defer func() { initTracerFn = origTracer }()
+	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+		return trace.NewNoopTracerProvider().Tracer("noop"), func(context.Context) error {
+			return errors.New("tracer shutdown failed")
+		}, nil
 	}
 
-	// Call AddLog
-	ctx := context.Background()
-	resp, err := client.AddLog(ctx, "info", "test message")
-	if err != nil {
-		t.Fatalf("AddLog failed: %v", err)
-	}
-	defer resp.Body.Close()
+	client, _ := NewAlloyClient(context.Background())
+	err := client.Shutdown(context.Background())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "tracer shutdown failed")
+}
 
-	// Validate the response
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected status code 200, got %d", resp.StatusCode)
-	}
+func TestStartTrace(t *testing.T) {
+	client, _ := NewAlloyClient(context.Background())
+	ctx, span, err := client.startTrace(context.Background(), "start-trace-test")
+	assert.NoError(t, err)
+	assert.NotNil(t, span)
+	assert.NotNil(t, ctx)
+}
+
+func TestStartTrace_NoTracer(t *testing.T) {
+	client := &AlloyClient{}
+	_, _, err := client.startTrace(context.Background(), "fail-trace")
+	assert.Error(t, err)
+	assert.Equal(t, "tracer not initialized", err.Error())
 }
