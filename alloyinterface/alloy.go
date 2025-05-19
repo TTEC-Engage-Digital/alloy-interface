@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -240,12 +241,26 @@ func (ac *AlloyClient) Shutdown(ctx context.Context) error {
 }
 
 func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+	caCert, err := os.ReadFile(cfg.CertFilePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read CA cert: %w", err)
+	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		return nil, nil, fmt.Errorf("failed to append CA cert to pool")
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: false,
+	}
+
 	var exporter sdktrace.SpanExporter
-	var err error
 
 	httpOpts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(cfg.TraceEndpoint),
-		otlptracehttp.WithTLSClientConfig(&tls.Config{InsecureSkipVerify: false}),
+		otlptracehttp.WithTLSClientConfig(tlsConfig),
 	}
 	exporter, err = otlptracehttp.New(ctx, httpOpts...)
 	if err != nil {
@@ -271,13 +286,11 @@ func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Con
 }
 
 func initLog() (zerolog.Logger, error) {
-	// Ensure the logs directory exists
 	logDir := "logs"
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return zerolog.Logger{}, fmt.Errorf("failed to create log directory: %v", err)
 	}
 
-	// Initialize the logger
 	return zerolog.New(zerolog.ConsoleWriter{
 		Out: &lumberjack.Logger{
 			Filename:   logDir + "/alloy.log",
