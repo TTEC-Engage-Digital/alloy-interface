@@ -8,17 +8,17 @@
 
 This package provides:
 
-- Auto-configured OpenTelemetry `TracerProvider` with OTLP HTTP exporter.
-- Environment-based configuration for endpoint and service metadata.
-- Simple API to start and manage trace spans.
-- Graceful shutdown of tracing system to flush remaining spans.
-- Logging support with structured logs sent to a configurable endpoint.
+- Pre-configured OpenTelemetry `TracerProvider` with an OTLP HTTP exporter.
+- Environment-based configuration for endpoints and service metadata.
+- A simple API to start and manage trace spans.
+- Graceful shutdown of the tracing system to flush remaining spans.
+- Structured logging support with logs sent to a configurable endpoint.
 
 ---
 
 ## 🔧 Configuration
 
-### 1. This package uses the following environment variables
+### 1. Environment Variables Used by This Package
 
 | Variable Name           | Default Value                         | Description                                 |
 |-------------------------|---------------------------------------|---------------------------------------------|
@@ -26,7 +26,7 @@ This package provides:
 | `ALLOY_LOG_ENDPOINT`    | `http://localhost:9999`               | Endpoint for sending logs to Grafana Alloy  |
 | `ALLOY_SERVICE_NAME`    | `addi`                                | Service name for traces and logs            |
 | `ALLOY_TRACER_NAME`     | `addi-tracer`                         | Logical name of the tracer                  |
-| `ALLOY_CERTFILE_PATH`   | `/etc/config/grafana-alloy.crt`       | Certificate file path to send logs to alloy |
+| `ALLOY_CERTFILE_PATH`   | `/etc/config/grafana-alloy.crt`       | Path to the certificate file for sending logs to Alloy |
 
 Example setup:
 
@@ -40,25 +40,25 @@ export ALLOY_CERTFILE_PATH="/etc/config/grafana-alloy.crt"
 
 ---
 
-### 2. Setup local Grafana Alloy and configurtations
+### 2. Setting Up Grafana Alloy and Configurations
 
-#### Setup Grafana Alloy to use the Go integration
+#### Setting Up Grafana Alloy for Go Integration
 
-You can set up the local Grafana Alloy by following the instructions on the [Grafana Alloy documentation page](https://grafana.com/docs/alloy/latest/).
+You can set up Grafana Alloy locally by following the instructions on the [Grafana Alloy documentation page](https://grafana.com/docs/alloy/latest/).
 
-Or you can install alloy following the [integration](https://ttecdev.grafana.net/connections/add-new-connection/golang?page=alloy).
+Alternatively, you can install Alloy using the [integration guide](https://ttecdev.grafana.net/connections/add-new-connection/golang?page=alloy).
 
-The sample command to install alloy is: (remember to update the id and api key)
+Here is a sample command to install Alloy (make sure to update the ID and API key):
 
 ```bash
 GCLOUD_HOSTED_METRICS_ID="..." GCLOUD_HOSTED_METRICS_URL="https://prometheus-prod-10-prod-us-central-0.grafana.net/api/prom/push" GCLOUD_HOSTED_LOGS_ID="..." GCLOUD_HOSTED_LOGS_URL="https://logs-prod3.grafana.net/loki/api/v1/push" GCLOUD_RW_API_KEY="..." /bin/sh -c "$(curl -fsSL https://storage.googleapis.com/cloud-onboarding/alloy/scripts/install-linux.sh)"
 ```
 
-#### Setup alloy configuration
+#### Configuring Alloy
 
-You can find your configuration file for your Alloy instance at /etc/alloy/config.alloy.
+You can find the configuration file for your Alloy instance at `/etc/alloy/config.alloy`.
 
-First, manually copy and replace the following snippets into your alloy configuration file.
+Manually copy and replace the following snippets into your Alloy configuration file:
 
 ```bash
 loki.source.api "listener" {
@@ -126,7 +126,7 @@ loki.write "grafana_cloud_loki" {
                 url = "https://logs-prod3.grafana.net/loki/api/v1/push"
 
                 basic_auth {
-                        // replace this with your auth info. you can get it from [here - passowrd](https://grafana.com/orgs/ttec/hosted-logs/273608)
+                        // Replace this with your authentication info. You can get it from [here - password](https://grafana.com/orgs/ttec/hosted-logs/273608)
                         username = "..."
                         password = "glc_..."
                 }
@@ -164,23 +164,22 @@ otelcol.exporter.otlphttp "grafana_cloud" {
 }
 
 otelcol.auth.basic "grafana_cloud" {
-        // replace this with your auth info. you can get it from [here - instance id and password](https://grafana.com/orgs/ttec/stacks/424255/otlp-info)
+        // Replace this with your authentication info. You can get it from [here - instance ID and password](https://grafana.com/orgs/ttec/stacks/424255/otlp-info)
         username = ... 
         password = "glc_..."
 }
 ```
 
-#### Generate certifications
+#### Generating Certificates
 
-Once you’ve changed your configuration file, run the following command to generate the certifications.
+After updating your configuration file, run the following commands to generate the certificates:
 
 ```bash
 touch cert.conf
 nano cert.conf
 ```
 
-this command is to make a configuration file of certifications for the purpose of generating.
-Now you can copy the below content and paste it in the cert.conf file.
+Create a configuration file for generating certificates. Copy and paste the following content into the `cert.conf` file:
 
 ```bash
 [req]
@@ -200,15 +199,15 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 ```
 
-The next thing is to generate the certificates.
+Next, generate the certificates:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes   -keyout grafana-alloy.key   -out grafana-alloy.crt   -days 365   -config cert.conf
 ```
 
-This will generte grafana-alloy.key and grafana-alloy.crt.
+This will generate `grafana-alloy.key` and `grafana-alloy.crt`.
 
-Now it's time to move the certifications to config folder.
+Move the certificates to the configuration folder:
 
 ```bash
 sudo mkdir -p /etc/config
@@ -217,17 +216,15 @@ sudo cp grafana-alloy.key /etc/config/
 sudo chown -R alloy:alloy /etc/config
 ```
 
-#### Restart Grafana Alloy and test configurations
+#### Restarting Grafana Alloy and Testing Configurations
 
-Once you’ve copied the certifications, run the following command to restart Grafana Alloy.
-
-Restart Alloy for any changes to take effect:
+Restart Alloy to apply the changes:
 
 ```bash
 sudo systemctl restart alloy.service
 ```
 
-Now you can check if alloy is running by visiting the [alloy local website](http://localhost:12345)
+Verify that Alloy is running by visiting the [local Alloy website](http://localhost:12345).
 
 ---
 
@@ -235,7 +232,7 @@ Now you can check if alloy is running by visiting the [alloy local website](http
 
 ### 🔹 `func NewAlloyClient(ctx context.Context) (*AlloyClient, error)`
 
-Creates a new instance of `AlloyClient` with OpenTelemetry tracer initialized.
+Creates a new instance of `AlloyClient` with an OpenTelemetry tracer initialized.
 
 **Example:**
 
@@ -370,7 +367,11 @@ func main() {
     if err != nil {
         log.Fatalf("Failed to create Alloy client: %v", err)
     }
-    defer client.Shutdown(ctx)
+    defer func() {
+        if err := client.Shutdown(ctx); err != nil {
+            log.Fatalf("failed to shutdown Alloy client: %v", err)
+        }
+    }()
 
     // Add a span
     err = client.AddSpan(ctxWithRequestID, "main-operation", "operation", "processing data")
@@ -381,9 +382,10 @@ func main() {
     // Add a log
     requestID := uuid.New().String()
     ctxWithRequestID := context.WithValue(r.Context(), "request_id", requestID)
-    err = client.AddLog(ctxWithRequestID, "info", "Application started")
+    resp, err := client.AddLog(ctxWithRequestID, zerolog.InfoLevel, "Application started")
     if err != nil {
-        log.Printf("Failed to send log: %v", err)
+        log.Printf("failed to send CPU usage log: %v", err)
     }
+    log.Printf("Log sent: %v", resp)
 }
 ```
