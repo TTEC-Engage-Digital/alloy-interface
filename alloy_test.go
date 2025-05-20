@@ -60,10 +60,8 @@ func TestNewAlloyClient_LoggerError(t *testing.T) {
 }
 
 func TestAddLog_Success(t *testing.T) {
-	type contextKey string
-	const requestIDKey contextKey = "request_id"
 
-	ctx := context.WithValue(context.Background(), requestIDKey, "abc-123")
+	ctx := context.WithValue(context.Background(), "request_id", "abc-123")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -124,10 +122,7 @@ func TestAddLog_HttpFailure(t *testing.T) {
 }
 
 func TestAddLog_NonSuccessStatus(t *testing.T) {
-	type contextKey string
-	const requestIDKey contextKey = "request_id"
-
-	ctx := context.WithValue(context.Background(), requestIDKey, "456")
+	ctx := context.WithValue(context.Background(), "request_id", "456")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
