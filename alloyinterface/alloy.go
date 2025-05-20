@@ -69,9 +69,15 @@ func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, a
 		return errors.New("tracer not initialized")
 	}
 
+	requestID := ctx.Value("request_id")
+	if requestID == nil {
+		requestID = "unknown"
+	}
+
 	ac.Logger.Info().
 		Str("tracer_name", tracerName).
 		Int("attributes_count", len(attrs)).
+		Str("request_id", fmt.Sprintf("%v", requestID)).
 		Msg("AddSpanWithAttr: Starting span with attributes")
 
 	_, span, err := ac.startTrace(ctx, tracerName)
@@ -79,6 +85,7 @@ func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, a
 		ac.Logger.Error().
 			Err(err).
 			Str("tracer_name", tracerName).
+			Str("request_id", fmt.Sprintf("%v", requestID)).
 			Msg("AddSpanWithAttr: Failed to start tracing")
 		return fmt.Errorf("failed to start tracing: %v", err)
 	}
@@ -87,6 +94,7 @@ func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, a
 
 	ac.Logger.Info().
 		Str("tracer_name", tracerName).
+		Str("request_id", fmt.Sprintf("%v", requestID)).
 		Msg("AddSpanWithAttr: Span with attributes ended successfully")
 
 	return nil
@@ -103,9 +111,15 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, tracerName string, title str
 		return errors.New("tracer name cannot be empty")
 	}
 
+	requestID := ctx.Value("request_id")
+	if requestID == nil {
+		requestID = "unknown"
+	}
+
 	ac.Logger.Info().
 		Str("tracer_name", tracerName).
 		Str("title", title).
+		Str("request_id", fmt.Sprintf("%v", requestID)).
 		Msg("AddSpan: Starting span")
 
 	_, span, err := ac.startTrace(ctx, tracerName)
@@ -113,6 +127,7 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, tracerName string, title str
 		ac.Logger.Error().
 			Err(err).
 			Str("tracer_name", tracerName).
+			Str("request_id", fmt.Sprintf("%v", requestID)).
 			Msg("AddSpan: Failed to start tracing")
 		return fmt.Errorf("failed to start tracing: %v", err)
 	}
@@ -122,6 +137,7 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, tracerName string, title str
 
 	ac.Logger.Info().
 		Str("tracer_name", tracerName).
+		Str("request_id", fmt.Sprintf("%v", requestID)).
 		Str("title", title).
 		Msg("AddSpan: Span ended successfully")
 

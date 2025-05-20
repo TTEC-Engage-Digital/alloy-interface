@@ -20,12 +20,13 @@ This package provides:
 
 ### 1. This package uses the following environment variables
 
-| Variable Name           | Default Value          | Description                                 |
-|-------------------------|------------------------|---------------------------------------------|
-| `ALLOY_ENDPOINT`        | `localhost:4318`       | OTLP endpoint for Grafana Alloy             |
-| `ALLOY_LOG_ENDPOINT`    | `http://localhost:9999`| Endpoint for sending logs to Grafana Alloy  |
-| `ALLOY_SERVICE_NAME`    | `addi`                 | Service name for traces and logs            |
-| `ALLOY_TRACER_NAME`     | `addi-tracer`          | Logical name of the tracer                  |
+| Variable Name           | Default Value                         | Description                                 |
+|-------------------------|---------------------------------------|---------------------------------------------|
+| `ALLOY_ENDPOINT`        | `localhost:4318`                      | OTLP endpoint for Grafana Alloy             |
+| `ALLOY_LOG_ENDPOINT`    | `http://localhost:9999`               | Endpoint for sending logs to Grafana Alloy  |
+| `ALLOY_SERVICE_NAME`    | `addi`                                | Service name for traces and logs            |
+| `ALLOY_TRACER_NAME`     | `addi-tracer`                         | Logical name of the tracer                  |
+| `ALLOY_CERTFILE_PATH`   | `/etc/config/grafana-alloy.crt`       | Certificate file path to send logs to alloy |
 
 Example setup:
 
@@ -34,11 +35,14 @@ export ALLOY_ENDPOINT=localhost:4318
 export ALLOY_LOG_ENDPOINT=http://localhost:9999
 export ALLOY_SERVICE_NAME=my-service
 export ALLOY_TRACER_NAME=my-service-tracer
+export ALLOY_CERTFILE_PATH="/etc/config/grafana-alloy.crt"
 ```
 
 ---
 
-### 2. Setup local Grafana Alloy
+### 2. Setup local Grafana Alloy and configurtations
+
+#### Setup Grafana Alloy to use the Go integration
 
 You can set up the local Grafana Alloy by following the instructions on the [Grafana Alloy documentation page](https://grafana.com/docs/alloy/latest/).
 
@@ -50,16 +54,13 @@ The sample command to install alloy is: (remember to update the id and api key)
 GCLOUD_HOSTED_METRICS_ID="..." GCLOUD_HOSTED_METRICS_URL="https://prometheus-prod-10-prod-us-central-0.grafana.net/api/prom/push" GCLOUD_HOSTED_LOGS_ID="..." GCLOUD_HOSTED_LOGS_URL="https://logs-prod3.grafana.net/loki/api/v1/push" GCLOUD_RW_API_KEY="..." /bin/sh -c "$(curl -fsSL https://storage.googleapis.com/cloud-onboarding/alloy/scripts/install-linux.sh)"
 ```
 
-Set up Grafana Alloy to use the Go integration
+#### Setup alloy configuration
+
 You can find your configuration file for your Alloy instance at /etc/alloy/config.alloy.
 
 First, manually copy and replace the following snippets into your alloy configuration file.
 
 ```bash
-livedebugging {
-        enabled = true
-}
-
 loki.source.api "listener" {
     http {
         listen_address = "127.0.0.1"
@@ -72,56 +73,48 @@ loki.source.api "listener" {
 }
 
 loki.process "process_logs" {
-
-    // Stage 1
+    // Stage 1: Parse the entire log line as JSON
     stage.json {
         expressions = {
-            log = "",
-            ts  = "timestamp",
+            ts           = "timestamp",
+            level        = "",
+            log_line     = "message",
+            is_secret    = "",
+            service_name = "",
+            request_id   = "",
         }
     }
 
-    // Stage 2
+    // Stage 2: Parse timestamp from `ts`
     stage.timestamp {
         source = "ts"
         format = "RFC3339"
     }
 
-    // Stage 3
-    stage.json {
-        source = "log"
-
-        expressions = {
-            is_secret    = "",
-            level        = "",
-            log_line     = "message",
-            service_name = "",
-        }
-    }
-
-    // Stage 4
+    // Stage 3: Drop secret logs
     stage.drop {
         source = "is_secret"
         value  = "true"
     }
 
-    // Stage 5
+    // Stage 4: Set labels
     stage.labels {
         values = {
             level        = "",
             service_name = "",
+            request_id   = "",
         }
     }
 
-    // Stage 6
+    // Stage 5: Set output to the message
     stage.output {
         source = "log_line"
     }
 
-    // This stage adds static values to the labels on the log line
+    // Stage 6: Add static labels
     stage.static_labels {
         values = {
-            source = "demo-api",  // replace this with the real name of source
+            source = "demo-api",
         }
     }
 
@@ -143,7 +136,12 @@ loki.write "grafana_cloud_loki" {
 otelcol.receiver.otlp "default" {
         grpc {}
 
-        http {}
+        http {
+                tls {
+                        cert_file = "/etc/config/grafana-alloy.crt"
+                        key_file = "/etc/config/grafana-alloy.key"
+                }
+        }
 
         output {
                 traces  = [otelcol.processor.batch.default.input]
@@ -172,11 +170,58 @@ otelcol.auth.basic "grafana_cloud" {
 }
 ```
 
-Restart Grafana Alloy and test configurations
-Restart Grafana Alloy
-Once you’ve changed your configuration file, run the following command to restart Grafana Alloy.
+#### Generate certifications
 
-After installation, the config is stored in /etc/alloy/config.alloy. Restart Alloy for any changes to take effect:
+Once you’ve changed your configuration file, run the following command to generate the certifications.
+
+```bash
+touch cert.conf
+nano cert.conf
+```
+
+this command is to make a configuration file of certifications for the purpose of generating.
+Now you can copy the below content and paste it in the cert.conf file.
+
+```bash
+[req]
+default_bits       = 2048
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+x509_extensions    = v3_req
+
+[dn]
+CN = localhost
+
+[v3_req]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = localhost
+```
+
+The next thing is to generate the certificates.
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes   -keyout grafana-alloy.key   -out grafana-alloy.crt   -days 365   -config cert.conf
+```
+
+This will generte grafana-alloy.key and grafana-alloy.crt.
+
+Now it's time to move the certifications to config folder.
+
+```bash
+sudo mkdir -p /etc/config
+sudo cp grafana-alloy.crt /etc/config/
+sudo cp grafana-alloy.key /etc/config/
+sudo chown -R alloy:alloy /etc/config
+```
+
+#### Restart Grafana Alloy and test configurations
+
+Once you’ve copied the certifications, run the following command to restart Grafana Alloy.
+
+Restart Alloy for any changes to take effect:
 
 ```bash
 sudo systemctl restart alloy.service
@@ -212,13 +257,15 @@ Sends a structured log to the configured log endpoint.
 **Parameters:**
 
 - `ctx`: Context for the log request.
-- `level`: Log level (e.g., `info`, `error`).
+- `level`: Log level (e.g., zerolog.InfoLevel, zerolog.DebugLevel).
 - `msg`: Log message.
 
 **Example:**
 
 ```go
-resp, err := client.AddLog(ctx, "info", "This is a test log message")
+requestID := uuid.New().String()
+ctxWithRequestID := context.WithValue(r.Context(), "request_id", requestID)
+resp, err := client.AddLog(ctxWithRequestID, zerolog.InfoLevel, "This is a test log message")
 if err != nil {
     log.Printf("Failed to send log: %v", err)
 }
@@ -240,7 +287,32 @@ Creates and ends a span immediately under the given context, often used for sub-
 **Example:**
 
 ```go
-err := client.AddSpan(ctx, "db-query", "query", "SELECT * FROM users")
+requestID := uuid.New().String()
+ctxWithRequestID := context.WithValue(r.Context(), "request_id", requestID)
+err := client.AddSpan(ctxWithRequestID, "db-query", "query", "SELECT * FROM users")
+if err != nil {
+    log.Printf("Failed to add span: %v", err)
+}
+```
+
+---
+
+### 🔹 `func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, attrs ...attribute.KeyValue) error`
+
+Creates and ends a span immediately under the given context, often used for sub-operations.
+
+**Parameters:**
+
+- `ctx`: Context with parent span.
+- `tracerName`: Name of the tracer.
+- `attrs`: Attributes for the span.
+
+**Example:**
+
+```go
+requestID := uuid.New().String()
+ctxWithRequestID := context.WithValue(r.Context(), "request_id", requestID)
+err := client.AddSpanWithAttr(ctxWithRequestID, "db-query", attribute.String("query", "SELECT * FROM users"))
 if err != nil {
     log.Printf("Failed to add span: %v", err)
 }
@@ -288,6 +360,7 @@ import (
     "log"
 
     "github.com/TTEC-Engage-Digital/alloy-interface/alloyinterface"
+    ...
 )
 
 func main() {
@@ -299,16 +372,18 @@ func main() {
     }
     defer client.Shutdown(ctx)
 
-    // Add a log
-    err = client.AddLog(ctx, "info", "Application started")
-    if err != nil {
-        log.Printf("Failed to send log: %v", err)
-    }
-
     // Add a span
-    err = client.AddSpan(ctx, "main-operation", "operation", "processing data")
+    err = client.AddSpan(ctxWithRequestID, "main-operation", "operation", "processing data")
     if err != nil {
         log.Printf("Failed to add span: %v", err)
+    }
+
+    // Add a log
+    requestID := uuid.New().String()
+    ctxWithRequestID := context.WithValue(r.Context(), "request_id", requestID)
+    err = client.AddLog(ctxWithRequestID, "info", "Application started")
+    if err != nil {
+        log.Printf("Failed to send log: %v", err)
     }
 }
 ```
