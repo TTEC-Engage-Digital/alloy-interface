@@ -90,6 +90,7 @@ func (ac *AlloyClient) AddSpanWithAttr(ctx context.Context, tracerName string, a
 			Msg("AddSpanWithAttr: Failed to start tracing")
 		return fmt.Errorf("failed to start tracing: %v", err)
 	}
+	span.SetAttributes(attribute.String("request_id", fmt.Sprintf("%v", requestID)))
 	span.SetAttributes(attrs...)
 	span.End()
 
@@ -133,6 +134,7 @@ func (ac *AlloyClient) AddSpan(ctx context.Context, tracerName string, title str
 		return fmt.Errorf("failed to start tracing: %v", err)
 	}
 
+	span.SetAttributes(attribute.String("request_id", fmt.Sprintf("%v", requestID)))
 	span.SetAttributes(attribute.String(title, msgBody))
 	span.End()
 
