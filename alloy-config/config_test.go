@@ -1,4 +1,4 @@
-package alloyinterface
+package alloyconfig
 
 import (
 	"os"
