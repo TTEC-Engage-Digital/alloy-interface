@@ -213,7 +213,12 @@ Move the certificates to the configuration folder:
 sudo mkdir -p /etc/config
 sudo cp grafana-alloy.crt /etc/config/
 sudo cp grafana-alloy.key /etc/config/
-sudo chown -R alloy:alloy /etc/config
+sudo groupadd certreaders
+sudo usermod -aG certreaders Robert
+sudo usermod -aG certreaders alloy
+sudo chgrp certreaders -R /etc/config
+sudo chmod 640 -R /etc/config
+sudo chmod 750 -R /etc/config
 ```
 
 #### Restarting Grafana Alloy and Testing Configurations
