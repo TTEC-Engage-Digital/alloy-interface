@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	alloyconfig "github.com/TTEC-Engage-Digital/alloy-interface/alloy-config"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,7 +28,7 @@ func TestNewAlloyClient_Success(t *testing.T) {
 func TestNewAlloyClient_TracerError(t *testing.T) {
 	original := initTracerFn
 	defer func() { initTracerFn = original }()
-	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+	initTracerFn = func(ctx context.Context, cfg alloyconfig.Config) (trace.Tracer, func(context.Context) error, error) {
 		return nil, nil, errors.New("tracer init failed")
 	}
 
@@ -45,7 +46,7 @@ func TestNewAlloyClient_LoggerError(t *testing.T) {
 		initLogFn = origLogger
 	}()
 
-	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+	initTracerFn = func(ctx context.Context, cfg alloyconfig.Config) (trace.Tracer, func(context.Context) error, error) {
 		return trace.NewNoopTracerProvider().Tracer("noop"), func(context.Context) error { return nil }, nil
 	}
 	initLogFn = func() (zerolog.Logger, error) {
@@ -59,7 +60,10 @@ func TestNewAlloyClient_LoggerError(t *testing.T) {
 }
 
 func TestAddLog_Success(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "request_id", "abc-123")
+	type contextKey string
+	const requestIDKey contextKey = "request_id"
+
+	ctx := context.WithValue(context.Background(), requestIDKey, "abc-123")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -120,7 +124,10 @@ func TestAddLog_HttpFailure(t *testing.T) {
 }
 
 func TestAddLog_NonSuccessStatus(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "request_id", "456")
+	type contextKey string
+	const requestIDKey contextKey = "request_id"
+
+	ctx := context.WithValue(context.Background(), requestIDKey, "456")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -193,7 +200,7 @@ func TestShutdown_NoTracer(t *testing.T) {
 func TestShutdown_TracerError(t *testing.T) {
 	origTracer := initTracerFn
 	defer func() { initTracerFn = origTracer }()
-	initTracerFn = func(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+	initTracerFn = func(ctx context.Context, cfg alloyconfig.Config) (trace.Tracer, func(context.Context) error, error) {
 		return trace.NewNoopTracerProvider().Tracer("noop"), func(context.Context) error {
 			return errors.New("tracer shutdown failed")
 		}, nil

@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	alloyconfig "github.com/TTEC-Engage-Digital/alloy-interface/alloy-config"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,7 +28,7 @@ import (
 type AlloyClient struct {
 	Tracer        trace.Tracer
 	Logger        zerolog.Logger
-	cfg           Config
+	cfg           alloyconfig.Config
 	traceShutdown func(context.Context) error
 	rateLimiter   *rate.Limiter
 }
@@ -39,7 +40,7 @@ var (
 )
 
 func NewAlloyClient(ctx context.Context) (*AlloyClient, error) {
-	cfg := LoadConfig()
+	cfg := alloyconfig.LoadConfig()
 
 	tracer, closeFn, err := initTracerFn(ctx, cfg)
 	if err != nil {
@@ -256,7 +257,7 @@ func (ac *AlloyClient) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func initTracer(ctx context.Context, cfg Config) (trace.Tracer, func(context.Context) error, error) {
+func initTracer(ctx context.Context, cfg alloyconfig.Config) (trace.Tracer, func(context.Context) error, error) {
 	caCert, err := os.ReadFile(cfg.CertFilePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to read CA cert: %w", err)
